@@ -1,4 +1,4 @@
-# Vocifly
+# Tme
 
 一款为轻交互而做的产品。
 
@@ -10,7 +10,7 @@
 
 ### 愿景
 
-我们相信，交互的下一步是"轻交互"。二八法则在这里同样成立：真正用得上的指令，永远只有 20%，剩下 80% 的琐碎操作，本不该占用你的注意力。Vocifly 想做的，就是把这 20% 的核心交互从键盘上解放出来。
+我们相信，交互的下一步是"轻交互"。二八法则在这里同样成立：真正用得上的指令，永远只有 20%，剩下 80% 的琐碎操作，本不该占用你的注意力。Tme 想做的，就是把这 20% 的核心交互从键盘上解放出来。
 
 但轻交互有一个天生的短板：模糊的话，机器听不懂。这个短板，交给 AI 来补——你只管说，AI 负责把随口的一句话，翻译成电脑能精确执行的指令。
 
@@ -43,13 +43,13 @@
 ### PC 端展示
 
 <p align="center">
-  <img src="./doc/pc-setting.png" width="800" alt="Vocifly 设置面板">
+  <img src="./doc/pc-setting.png" width="800" alt="Tme 设置面板">
 </p>
 
 ### 移动端展示
 
 <p align="center">
-  <img src="./doc/web.png" width="300" alt="Vocifly 移动端界面">
+  <img src="./doc/web.png" width="300" alt="Tme 移动端界面">
 </p>
 
 ## 安装
@@ -76,13 +76,13 @@ brew install mkcert
 npm run setup:https
 ```
 
-打开 Vocifly 主窗口（或访问 `http://localhost:9898`）即可扫码使用。
+打开 Tme 主窗口（或访问 `http://localhost:9898`）即可扫码使用。
 
 > 默认端口：HTTP 控制面板 / 证书安装页 9898，HTTPS 语音页 / WebSocket 9899。
 
 ## 手机首次配置
 
-让手机 / 平板和 Mac 连接同一个局域网。打开 Vocifly 主窗口，「设备接入」页按三步走：
+让手机 / 平板和 Mac 连接同一个局域网。打开 Tme 主窗口，「设备接入」页按三步走：
 
 1. **Mac 本机钥匙串信任** — 点「在 Mac 上信任」完成一次性授权（可跳过，见上）
 2. **首次配置** — 新手机扫「首次配置」二维码（或直接访问 `http://<Mac-IP>:9898`），页面会根据设备自动显示对应的安装步骤
@@ -93,10 +93,10 @@ npm run setup:https
 1. 在「设备接入」页扫「首次配置」二维码，或直接访问 `http://<Mac-IP>:9898`。
 2. 点击"下载安装描述文件"，Safari 会提示"此网站正尝试下载一个配置描述文件"，点"允许"。
 3. 打开 iPhone"设置 > 通用 > VPN 与设备管理"。
-4. 在"已下载的描述文件"下面找到"Vocifly 本地证书"，点进去并选择"安装"。
-5. 安装成功后，进入"设置 > 通用 > 关于本机 > 证书信任设置"，启用"Vocifly 本地根证书"。
-6. 回到"Vocifly 首次配置"页面，点击"验证安装"。
-7. 验证通过后，点击"打开 Vocifly 语音输入"。
+4. 在"已下载的描述文件"下面找到"Tme 本地证书"，点进去并选择"安装"。
+5. 安装成功后，进入"设置 > 通用 > 关于本机 > 证书信任设置"，启用"Tme 本地根证书"。
+6. 回到"Tme 首次配置"页面，点击"验证安装"。
+7. 验证通过后，点击"打开 Tme 语音输入"。
 
 注意："证书信任设置"在安装成功前是空的，这是正常现象。如果没有看到"已下载的描述文件"，说明描述文件还没有下载成功，请回到"首次配置"页重新下载。
 
@@ -108,8 +108,8 @@ npm run setup:https
    - 大多数安卓：`设置 > 安全 > 加密与凭据 > 安装证书 > CA 证书`
    - 具体路径因厂商而异，以系统实际菜单为准
 4. 选择刚下载的 `phvoice-ca.crt`。若系统提示"可能带来风险"，选择"仍然安装"。
-5. 回到"Vocifly 首次配置"页面，点击"验证安装"。
-6. 验证通过后，点击"打开 Vocifly 语音输入"。
+5. 回到"Tme 首次配置"页面，点击"验证安装"。
+6. 验证通过后，点击"打开 Tme 语音输入"。
 
 手机 / 平板只需要配置一次。之后直接访问：
 
@@ -153,7 +153,7 @@ npm run trace        # 端到端识别会话链路追踪
 
 ## 环境变量
 
-最高优先级（覆盖 `config.json`）：`VOCIFLY_PASTE=0`（禁模拟粘贴）、`VOCIFLY_FORCE_HTTP=1`、`VOCIFLY_ASR_PROVIDER`、`DASHSCOPE_API_KEY` / `BAILIAN_API_KEY`、`BAILIAN_MODEL`、`BAILIAN_WORKSPACE_ID`、`BAILIAN_GATEWAY`、`VOCIFLY_HTTP_PORT` / `VOCIFLY_HTTPS_PORT`。
+最高优先级（覆盖 `config.json`）：`TME_PASTE=0`（禁模拟粘贴）、`TME_FORCE_HTTP=1`、`TME_ASR_PROVIDER`、`DASHSCOPE_API_KEY` / `BAILIAN_API_KEY`、`BAILIAN_MODEL`、`BAILIAN_WORKSPACE_ID`、`BAILIAN_GATEWAY`、`TME_HTTP_PORT` / `TME_HTTPS_PORT`。旧名 `VOCIFLY_*` 仍可用。
 
 ## 目录结构（简）
 

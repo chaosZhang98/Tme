@@ -25,7 +25,7 @@ function sha256(file) {
 function download(url, dest, redirects = 0) {
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(dest)
-    https.get(url, { headers: { 'User-Agent': 'vocifly-fetch-mkcert' } }, (res) => {
+    https.get(url, { headers: { 'User-Agent': 'tme-fetch-mkcert' } }, (res) => {
       // GitHub release 会 302 到 S3，必须跟随
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && redirects < 5) {
         file.destroy()

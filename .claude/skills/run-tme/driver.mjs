@@ -1,13 +1,13 @@
-// Vocifly 启动 + 驱动脚本（agent 工具，非产品代码）。
+// Tme 启动 + 驱动脚本（agent 工具，非产品代码）。
 // 用法：node driver.mjs [run|launch|smoke|screenshot|stop]
 //   run        默认：launch → smoke → screenshot，全程留 app 运行
 //   launch     杀掉旧实例 + 启动，等到 /api/health 就绪
 //   smoke      对已运行实例做 HTTP 冒烟（不启动）
 //   screenshot 用 CDP 抓控制面板截图到 runtime/debug/control-panel.png
-//   stop       杀掉 Vocifly 的 electron 进程
+//   stop       杀掉 Tme 的 electron 进程
 //
 // 依赖：Node ≥ 22（用了全局 fetch / WebSocket；本机 v24）。
-// 说明：路径全部相对 app/ 根（本文件位于 app/.claude/skills/run-vocifly/）。
+// 说明：路径全部相对 app/ 根（本文件位于 app/.claude/skills/run-tme/）。
 
 import { spawn, execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -16,15 +16,24 @@ import { fileURLToPath } from 'node:url'
 
 const SKILL_DIR = path.dirname(fileURLToPath(import.meta.url))
 const APP_ROOT = path.resolve(SKILL_DIR, '..', '..', '..') // app/
-const CDP_PORT = Number(process.env.VOCIFLY_CDP_PORT || 9222)
+
+function env(suffix) {
+  const primary = process.env['TME_' + suffix]
+  if (primary !== undefined && primary !== '') return primary
+  const legacy = process.env['VOCIFLY_' + suffix]
+  if (legacy !== undefined && legacy !== '') return legacy
+  return undefined
+}
+
+const CDP_PORT = Number(env('CDP_PORT') || 9222)
 const SCREENSHOT = path.join(APP_ROOT, 'runtime', 'debug', 'control-panel.png')
 const READY_TIMEOUT_MS = 30000
 
-// 复刻 app 的端口解析：env VOCIFLY_HTTP_PORT > config.json httpPort > 9898。
+// 复刻 app 的端口解析：env TME_HTTP_PORT（或 VOCIFLY_HTTP_PORT）> config.json httpPort > 9898。
 // 控制面板 / /api/* 都在这个 HTTP 端口上（仅 loopback）。
 function resolveHttpPort() {
-  const env = Number(process.env.VOCIFLY_HTTP_PORT)
-  if (env) return env
+  const envPort = Number(env('HTTP_PORT'))
+  if (envPort) return envPort
   try {
     const cfg = JSON.parse(readFileSync(path.join(APP_ROOT, 'config.json'), 'utf8'))
     if (cfg.httpPort) return Number(cfg.httpPort)
@@ -32,10 +41,13 @@ function resolveHttpPort() {
   return 9898
 }
 
-// 只杀 Vocifly 自己的 electron 进程（full-path 匹配，避免误杀 WorkBuddy 等其它 Electron 应用）。
+// 只杀本仓库自己的 electron 进程（full-path 匹配，避免误杀 WorkBuddy 等其它 Electron 应用）。
 // 两段分别匹配「electron 主进程（dist 二进制）」和「.bin/electron 包装进程」。
 function killExisting() {
-  for (const pat of ['Vocifly/app/node_modules/electron', 'Vocifly/app/node_modules/.bin/electron']) {
+  for (const pat of [
+    path.join(APP_ROOT, 'node_modules', 'electron'),
+    path.join(APP_ROOT, 'node_modules', '.bin', 'electron'),
+  ]) {
     try { execFileSync('pkill', ['-f', pat]) } catch {}
   }
 }
@@ -46,12 +58,12 @@ async function launch() {
   killExisting()
   // VSCode/本 shell 预置 ELECTRON_RUN_AS_NODE=1 会让 electron 退化成本地 Node，
   // app 对象为 undefined 直接崩溃。必须删掉这个变量（等价 shell 的 `env -u ELECTRON_RUN_AS_NODE`）。
-  const env = { ...process.env }
-  delete env.ELECTRON_RUN_AS_NODE
+  const launchEnv = { ...process.env }
+  delete launchEnv.ELECTRON_RUN_AS_NODE
 
   const bin = path.join(APP_ROOT, 'node_modules', '.bin', 'electron')
   spawn(bin, [`--remote-debugging-port=${CDP_PORT}`, '.'], {
-    cwd: APP_ROOT, env, stdio: 'ignore', detached: true,
+    cwd: APP_ROOT, env: launchEnv, stdio: 'ignore', detached: true,
   }).unref()
 
   const port = resolveHttpPort()
@@ -114,7 +126,7 @@ async function screenshot(out = SCREENSHOT) {
 
 async function main() {
   const [cmd] = process.argv.slice(2)
-  if (cmd === 'stop') { killExisting(); console.log('已停止 Vocifly'); return }
+  if (cmd === 'stop') { killExisting(); console.log('已停止 Tme'); return }
   if (cmd === 'screenshot') { await screenshot(); return }
   if (cmd === 'smoke') { process.exit((await smoke(resolveHttpPort())) ? 0 : 1); return }
   // launch 自己 resolveHttpPort 并返回 { port }；run/launch 复用，不再顶层无条件解析
