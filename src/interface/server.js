@@ -1,5 +1,5 @@
-// Vocifly 服务端：手机网页 + WebSocket 音频流 + 本地 HTTPS
-// 有证书时：HTTPS 应用跑在 9899，HTTP 证书安装页跑在 9898（默认；均可被 VOCIFLY_*_PORT 覆盖）
+// Tme 服务端：手机网页 + WebSocket 音频流 + 本地 HTTPS
+// 有证书时：HTTPS 应用跑在 9899，HTTP 证书安装页跑在 9898（默认；均可被 TME_*_PORT 覆盖）
 // 无证书时：退回 HTTP 开发模式，仅适合 Mac 本机浏览器验证
 const http = require('http')
 const { X509Certificate } = require('crypto')
@@ -9,7 +9,7 @@ const path = require('path')
 const QRCode = require('qrcode')
 const { WebSocket, WebSocketServer } = require('ws')
 const asr = require('../infrastructure/asr') // AsrPort：离线 sherpa / 在线 bailian 分发
-const { config, getSettings, saveSettings, effectiveVad } = require('../infrastructure/config')
+const { config, getSettings, saveSettings, effectiveVad, env, voiceInputEnabled } = require('../infrastructure/config')
 const appList = require('../infrastructure/platform/app-switcher') // 前台应用枚举
 const paster = require('../infrastructure/paste/mac-paster') // PastePort：mac 上屏
 const optimize = require('../infrastructure/optimize/bailian-optimize') // OptimizePort：百炼 qwen 文字优化
@@ -46,24 +46,24 @@ function persistKnownDevices() {
   }
 }
 
-// 端口解析：环境变量（VOCIFLY_*_PORT，优先）> config.json（可在控制面板改）> 内置默认。
+// 端口解析：环境变量（TME_*_PORT，优先；仍认 VOCIFLY_*）> config.json（可在控制面板改）> 内置默认。
 // 之所以做成函数而非模块级常量，是为了让「改端口→重启服务」时能读到新值，无需退出进程。
 function resolveHttpPort() {
-  const env = Number(process.env.VOCIFLY_HTTP_PORT)
-  if (env) return env
+  const envPort = Number(env('HTTP_PORT'))
+  if (envPort) return envPort
   const cfg = Number(config.httpPort)
   if (cfg) return cfg
   return 9898
 }
 function resolveHttpsPort() {
-  const env = Number(process.env.VOCIFLY_HTTPS_PORT)
-  if (env) return env
+  const envPort = Number(env('HTTPS_PORT'))
+  if (envPort) return envPort
   const cfg = Number(config.httpsPort)
   if (cfg) return cfg
   return 9899
 }
 const WEB_DIR = path.join(__dirname, '..', '..', 'renderer')
-const ENABLE_PASTE = process.env.VOCIFLY_PASTE !== '0'
+const ENABLE_PASTE = env('PASTE') !== '0'
 // 注：ASR 上下文构造（buildAsrContext）及 CONTEXT_MAX_TURNS/CHARS、PARTIAL_THROTTLE_MS 已随
 // A4 迁入 application/SessionService.js，此处不再保留。
 
@@ -165,12 +165,12 @@ async function renderMacPage(ctx) {
     <section class="grid">
       <div>
         <h2>正常输入</h2>
-        <img src="${appQr}" alt="Vocifly 使用二维码"/>
+        <img src="${appQr}" alt="Tme 使用二维码"/>
         <p>已配置过证书的手机扫这里</p>
       </div>
       <div>
         <h2>首次配置</h2>
-        ${setupQr ? `<img src="${setupQr}" alt="Vocifly 证书二维码"/>` : ''}
+        ${setupQr ? `<img src="${setupQr}" alt="Tme 证书二维码"/>` : ''}
         <p>新手机先扫这里安装本地证书</p>
       </div>
     </section>
@@ -183,7 +183,7 @@ async function renderMacPage(ctx) {
   const insecureContent = `
     <section class="single">
       <h2>开发模式</h2>
-      <img src="${appQr}" alt="Vocifly 开发二维码"/>
+      <img src="${appQr}" alt="Tme 开发二维码"/>
       <p>当前没有启用 HTTPS，手机浏览器无法调用麦克风。</p>
       <small>${ctx.certReason || '请先运行 npm run setup:https'}</small>
     </section>`
@@ -192,7 +192,7 @@ async function renderMacPage(ctx) {
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"/>
-  <title>Vocifly</title>
+  <title>Tme</title>
   <style>
     * { box-sizing: border-box; }
     body { margin: 0; min-height: 100vh; font-family: -apple-system, "PingFang SC", sans-serif; background: #f6f7f9; color: #202124; display: flex; flex-direction: column; }
@@ -224,7 +224,7 @@ async function renderMacPage(ctx) {
 <body>
   <header>
     <div>
-      <h1>Vocifly</h1>
+      <h1>Tme</h1>
       <p>把手机变成 Mac 的语音输入麦克风</p>
     </div>
     <a class="settings" href="/control">控制面板</a>
@@ -325,13 +325,16 @@ function settingsPayloadFor(client, settings) {
   // defaultInputMode：新手机（无本地偏好）默认进入的输入模式；compose：键盘通路参数（附件上限等）。
   // optimize：优化模板只下发 {id,name}（手机端选择器用），提示词正文不出 Mac，按 promptId 回传。
   // availability：手机端据此在「说话」前拦截不可用模式并弹框说明原因，避免先开麦再报错。
+  // voiceInput：关闭时强制 defaultInputMode=keyboard（不改磁盘），手机端按此藏 ASR UI。
+  const voiceOn = voiceInputEnabled()
   const optPool = (config.optimize && Array.isArray(config.optimize.pool)) ? config.optimize.pool : []
   return JSON.stringify({
     type: 'settings',
     trackpad,
     vad: effectiveVad(provider),
     provider,
-    defaultInputMode: config.defaultInputMode,
+    defaultInputMode: voiceOn ? config.defaultInputMode : 'keyboard',
+    voiceInput: voiceOn,
     compose: config.compose,
     availability: { cloud: cloudAvailable(), offline: modelDownload.isModelAvailable() },
     optimize: {
@@ -404,7 +407,7 @@ async function handleControlRoutes(req, res, ctx) {
     if (req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
       const settings = getSettings()
-      // 环境变量（VOCIFLY_*_PORT）覆盖端口时，向面板报告实际生效端口（env > config > 默认），
+      // 环境变量（TME_*_PORT）覆盖端口时，向面板报告实际生效端口（env > config > 默认），
       // 避免显示值与实际监听端口不一致。
       settings.httpPort = resolveHttpPort()
       settings.httpsPort = resolveHttpsPort()
@@ -531,7 +534,7 @@ async function handleControlRoutes(req, res, ctx) {
     const q = new URL(req.url, 'http://x').searchParams
     const type = q.get('type') === 'daily' ? 'daily' : 'history'
     const csv = usage.usageExportCsv(type)
-    const filename = type === 'daily' ? 'phvoice-usage-daily.csv' : 'phvoice-usage.csv'
+    const filename = type === 'daily' ? 'tme-usage-daily.csv' : 'tme-usage.csv'
     res.writeHead(200, {
       'Content-Type': 'text/csv; charset=utf-8',
       'Cache-Control': 'no-store',
@@ -674,7 +677,7 @@ function serveApp(req, res, ctx) {
       headers['Vary'] = 'Origin'
     }
     res.writeHead(200, headers)
-    res.end(JSON.stringify({ ok: true, service: 'vocifly' }))
+    res.end(JSON.stringify({ ok: true, service: 'tme' }))
     return
   }
 
@@ -700,10 +703,10 @@ function serveApp(req, res, ctx) {
     res.end('not found')
     return
   }
-  // 把 HTTP 设置页端口注入 app.js（window.VOCIFLY_SETUP_PORT），避免写死端口（默认 9898，可在控制面板改，可被 VOCIFLY_HTTP_PORT 覆盖）。
-  // 手机端语音页在同一台 serveApp 上加载 app.js，注入的 window.VOCIFLY_SETUP_PORT 同样生效。
+  // 把 HTTP 设置页端口注入 app.js（window.TME_SETUP_PORT），避免写死端口（默认 9898，可在控制面板改，可被 TME_HTTP_PORT 覆盖）。
+  // 手机端语音页在同一台 serveApp 上加载 app.js，注入的 window.TME_SETUP_PORT 同样生效。
   if (filePath === '/app.js') {
-    const content = `window.VOCIFLY_SETUP_PORT = ${ctx.httpPort};\n` + fs.readFileSync(file, 'utf8')
+    const content = `window.TME_SETUP_PORT = ${ctx.httpPort};\n` + fs.readFileSync(file, 'utf8')
     res.writeHead(200, {
       'Content-Type': 'application/javascript; charset=utf-8',
       // 禁缓存：前端迭代期 Safari 可能拿旧 JS，导致代码改了却不生效
@@ -728,7 +731,7 @@ function renderIosSetupPage(ctx) {
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Vocifly 首次配置</title>
+  <title>Tme 首次配置</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, "PingFang SC", sans-serif; background: #f7f7f8; color: #202124; line-height: 1.6; min-height: 100dvh; }
@@ -814,7 +817,7 @@ function renderIosSetupPage(ctx) {
 
     <div class="panel visible" id="step1">
       <h2>输入配对码</h2>
-      <p class="subtitle">打开 Mac 上 Vocifly 的「接入设备」面板，查看 6 位配对码</p>
+      <p class="subtitle">打开 Mac 上 Tme 的「接入设备」面板，查看 6 位配对码</p>
       <input class="pair-input" id="pairCode" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]*" placeholder="6 位数字" autocomplete="one-time-code"/>
       <button class="btn btn-primary" id="pairBtn" style="margin-top:16px">验证配对码</button>
       <div class="status" id="pairStatus">输入 Mac 上显示的 6 位配对码</div>
@@ -836,7 +839,7 @@ function renderIosSetupPage(ctx) {
           <div class="cert-step-content">
             <strong>安装描述文件</strong>
             <span class="path">设置 → 通用 → VPN 与设备管理</span>
-            <p>找到 <strong>Vocifly 本地证书</strong>，点进去安装</p>
+            <p>找到 <strong>Tme 本地证书</strong>，点进去安装</p>
           </div>
         </div>
         <div class="cert-step">
@@ -844,7 +847,7 @@ function renderIosSetupPage(ctx) {
           <div class="cert-step-content">
             <strong>信任根证书</strong>
             <span class="path">设置 → 通用 → 关于本机 → 证书信任设置</span>
-            <p>启用 <strong>Vocifly 本地根证书</strong> 开关</p>
+            <p>启用 <strong>Tme 本地根证书</strong> 开关</p>
           </div>
         </div>
       </div>
@@ -857,7 +860,7 @@ function renderIosSetupPage(ctx) {
     <div class="panel" id="step3">
       <h2>准备就绪</h2>
       <p class="subtitle">配对和证书都已完成</p>
-      <a class="btn btn-green" id="openApp" href="#">进入 Vocifly</a>
+      <a class="btn btn-green" id="openApp" href="#">进入 Tme</a>
     </div>
 
     <!-- 倒计时过渡面板（复用） -->
@@ -937,7 +940,7 @@ function renderIosSetupPage(ctx) {
       if (n === 3) {
         // 步骤 3「进入」：同样停 3 秒后自动进入触控板页面（按钮仍可手动点）
         document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-        countdown(3, '准备就绪，即将进入 Vocifly', enterApp)
+        countdown(3, '准备就绪，即将进入 Tme', enterApp)
       }
     }
 
@@ -947,7 +950,7 @@ function renderIosSetupPage(ctx) {
       var ctrl = new AbortController()
       var t = setTimeout(function () { ctrl.abort() }, 3000)
       fetch(target + '/api/health', { cache: 'no-store', signal: ctrl.signal })
-        .then(function (r) { clearTimeout(t); if (r.ok) { setProgress(3); countdown(3, '检测到配置已完成，即将进入 Vocifly', function () { location.href = target }) } })
+        .then(function (r) { clearTimeout(t); if (r.ok) { setProgress(3); countdown(3, '检测到配置已完成，即将进入 Tme', function () { location.href = target }) } })
         .catch(function () { clearTimeout(t) })
     })()
 
@@ -1000,7 +1003,7 @@ function renderIosSetupPage(ctx) {
             certStatus.className = 'status success'
             certStatus.textContent = '证书已安装 ✓'
             document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-            countdown(3, '证书已就绪，即将进入 Vocifly', function () { goStep(3) })
+            countdown(3, '证书已就绪，即将进入 Tme', function () { goStep(3) })
           }
         })
     }
@@ -1022,7 +1025,7 @@ function renderIosSetupPage(ctx) {
             certStatus.className = 'status success'
             certStatus.textContent = '证书验证通过 ✓'
             document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-            countdown(3, '证书验证通过，即将进入 Vocifly', function () { goStep(3) })
+            countdown(3, '证书验证通过，即将进入 Tme', function () { goStep(3) })
           } else {
             certStatus.className = 'status error'
             certStatus.textContent = '验证失败（' + result.reason + '）。请确认描述文件已安装并信任。'
@@ -1043,7 +1046,7 @@ function renderAndroidSetupPage(ctx) {
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Vocifly 首次配置</title>
+  <title>Tme 首次配置</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, "PingFang SC", sans-serif; background: #f7f7f8; color: #202124; line-height: 1.6; min-height: 100dvh; }
@@ -1132,7 +1135,7 @@ function renderAndroidSetupPage(ctx) {
 
     <div class="panel visible" id="step1">
       <h2>输入配对码</h2>
-      <p class="subtitle">打开 Mac 上 Vocifly 的「接入设备」面板，查看 6 位配对码</p>
+      <p class="subtitle">打开 Mac 上 Tme 的「接入设备」面板，查看 6 位配对码</p>
       <input class="pair-input" id="pairCode" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]*" placeholder="6 位数字" autocomplete="one-time-code"/>
       <button class="btn btn-primary" id="pairBtn" style="margin-top:16px">验证配对码</button>
       <div class="status" id="pairStatus">输入 Mac 上显示的 6 位配对码</div>
@@ -1185,7 +1188,7 @@ function renderAndroidSetupPage(ctx) {
     <div class="panel" id="step3">
       <h2>准备就绪</h2>
       <p class="subtitle">配对和证书都已完成</p>
-      <a class="btn btn-green" id="openApp" href="#">进入 Vocifly</a>
+      <a class="btn btn-green" id="openApp" href="#">进入 Tme</a>
     </div>
 
     <div class="panel" id="countdownPanel">
@@ -1264,7 +1267,7 @@ function renderAndroidSetupPage(ctx) {
       if (n === 3) {
         // 步骤 3「进入」：同样停 3 秒后自动进入触控板页面（按钮仍可手动点）
         document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-        countdown(3, '准备就绪，即将进入 Vocifly', enterApp)
+        countdown(3, '准备就绪，即将进入 Tme', enterApp)
       }
     }
 
@@ -1274,7 +1277,7 @@ function renderAndroidSetupPage(ctx) {
       var ctrl = new AbortController()
       var t = setTimeout(function () { ctrl.abort() }, 3000)
       fetch(target + '/api/health', { cache: 'no-store', signal: ctrl.signal })
-        .then(function (r) { clearTimeout(t); if (r.ok) { setProgress(3); countdown(3, '检测到配置已完成，即将进入 Vocifly', function () { location.href = target }) } })
+        .then(function (r) { clearTimeout(t); if (r.ok) { setProgress(3); countdown(3, '检测到配置已完成，即将进入 Tme', function () { location.href = target }) } })
         .catch(function () { clearTimeout(t) })
     })()
 
@@ -1327,7 +1330,7 @@ function renderAndroidSetupPage(ctx) {
             certStatus.className = 'status success'
             certStatus.textContent = '证书已安装 ✓'
             document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-            countdown(3, '证书已就绪，即将进入 Vocifly', function () { goStep(3) })
+            countdown(3, '证书已就绪，即将进入 Tme', function () { goStep(3) })
           }
         })
     }
@@ -1355,7 +1358,7 @@ function renderAndroidSetupPage(ctx) {
             certStatus.className = 'status success'
             certStatus.textContent = '证书验证通过 ✓'
             document.getElementById('openApp').href = (ipUrl || appUrl) + (pairToken ? '#token=' + encodeURIComponent(pairToken) : '')
-            countdown(3, '证书验证通过，即将进入 Vocifly', function () { goStep(3) })
+            countdown(3, '证书验证通过，即将进入 Tme', function () { goStep(3) })
           } else {
             certStatus.className = 'status error'
             certStatus.textContent = '验证失败：' + result.reason + '\\n请确认用 Chrome 打开、证书安装在 CA 证书类型、且受信任凭据中已启用。'
@@ -1550,6 +1553,8 @@ function attachWebSocket(server, onStatus, deps) {
       if (dev) dev.lastActiveAt = Date.now()
       if (isBinary) {
         // 二进制帧 = PCM 音频块（Int16, 16kHz, mono）
+        // voice 关闭时忽略（防御：旧页面仍可能推音频）
+        if (!voiceInputEnabled()) return
         sessionSvc.pushAudio(data)
         return
       }
@@ -1583,10 +1588,14 @@ function attachWebSocket(server, onStatus, deps) {
       }
 
       if (msg.type === 'start') {
+        // voice 关闭时忽略 start/stop/cancel（防御：旧页面点说话也不启 ASR）
+        if (!voiceInputEnabled()) return
         sessionSvc.start()
       } else if (msg.type === 'stop') {
+        if (!voiceInputEnabled()) return
         sessionSvc.stop()
       } else if (msg.type === 'cancel') {
+        if (!voiceInputEnabled()) return
         sessionSvc.cancel()
       } else if (msg.type === 'compose') {
         // 手机端 compose：文本 + 附件（图片/文件原子上屏），粘贴后自动回车
@@ -1594,6 +1603,8 @@ function attachWebSocket(server, onStatus, deps) {
       } else if (msg.type === 'inputMode') {
         // 手机端三种输入模式：云端(cloud→bailian)/本地(local→sherpa) 仅本连接生效，不改全局 config；
         // 键盘(keyboard) 不改 provider 覆盖，仅记录为展示模式（控制面板设备列表显示「键盘」）。
+        // voice 关闭时只接受 keyboard，忽略 cloud/local 覆盖。
+        if (!voiceInputEnabled() && msg.mode !== 'keyboard') return
         sessionSvc.setInputMode(msg.mode)
         if (ws.readyState === WebSocket.OPEN) ws.send(settingsPayloadFor(ws))
       } else if (msg.type === 'send') {
@@ -1612,7 +1623,8 @@ function attachWebSocket(server, onStatus, deps) {
         paster.switchWindow(dir)
         ws.send(JSON.stringify({ type: 'windowSwitched', dir }))
       } else if (msg.type === 'apps') {
-        const apps = appList.listApps().map((app) => ({
+        // 打开切换面板时强制刷新，避免 TTL/失败回退导致缺漏运行中 App 或仍显示已退出的 App
+        const apps = appList.listApps(true).map((app) => ({
           ...app,
           icon: app.icon ? 'data:image/png;base64,' + app.icon : '',
         }))
@@ -1716,8 +1728,16 @@ async function createServer({ onStatus, onQuit, deps, onServicesChanged, onLaunc
   log('server', `ASR provider: ${config.asr.provider}`)
   const lanIp = getLanIp() || '127.0.0.1'
   const localHostname = getLocalHostname()
-  const forceHttp = process.env.VOCIFLY_FORCE_HTTP === '1'
-  const cert = forceHttp ? { ok: false, reason: '已通过 VOCIFLY_FORCE_HTTP=1 强制使用 HTTP' } : ensureLocalCertificate()
+  // voiceInput 关闭或 TME_FORCE_HTTP=1：跳过证书，只启 HTTP（局域网也直接 serveApp，不吐证书安装页）
+  const forceHttp = env('FORCE_HTTP') === '1' || !voiceInputEnabled()
+  const cert = forceHttp
+    ? {
+        ok: false,
+        reason: env('FORCE_HTTP') === '1'
+          ? '已通过 TME_FORCE_HTTP=1 强制使用 HTTP'
+          : '语音输入已关闭（features.voiceInput=false），仅启用 HTTP 文字上屏',
+      }
+    : ensureLocalCertificate()
 
   if (cert.ok) {
     const appUrl = `https://${localHostname}:${HTTPS_PORT}`
@@ -1767,7 +1787,7 @@ async function createServer({ onStatus, onQuit, deps, onServicesChanged, onLaunc
 if (require.main === module) {
   createServer({ onStatus: (status) => console.log('[status]', status) })
     .then(({ url, setupUrl, isSecure, cert }) => {
-      log('server', `Vocifly 服务已启动: ${url}`)
+      log('server', `Tme 服务已启动: ${url}`)
       if (isSecure) log('server', `首次配置手机证书: ${setupUrl}`)
       else log('server', `当前是 HTTP 开发模式，手机浏览器无法调用麦克风。原因: ${cert.reason}`)
     })

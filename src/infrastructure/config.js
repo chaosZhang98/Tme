@@ -9,11 +9,25 @@ const paths = require('./paths')
 
 const CONFIG_FILE = paths.configFile
 
+// 读取应用环境变量：优先 TME_*，未设置时回退 VOCIFLY_*（改名兼容）。
+function env(suffix) {
+  const primary = process.env['TME_' + suffix]
+  if (primary !== undefined && primary !== '') return primary
+  const legacy = process.env['VOCIFLY_' + suffix]
+  if (legacy !== undefined && legacy !== '') return legacy
+  return undefined
+}
+
 const DEFAULTS = {
   sendRules: {},
   deleteRules: {},
+  // 功能开关：voiceInput=false 时屏蔽浏览器麦克风 ASR（只走键盘文字上屏），并默认只启 HTTP、不发证书。
+  // ASR 实现仍保留；TME_VOICE=1 可临时打开（不进控制面板）。
+  features: {
+    voiceInput: false,
+  },
   // 服务端口。默认 http 设置页 9898 / https 语音页+WS 9899；可在控制面板「配置 → 常规」改，改后自动重启生效。
-  // 也可用 VOCIFLY_HTTP_PORT / VOCIFLY_HTTPS_PORT 环境变量临时覆盖（优先级最高）。
+  // 也可用 TME_HTTP_PORT / TME_HTTPS_PORT 环境变量临时覆盖（优先级最高；仍认 VOCIFLY_*）。
   httpPort: 9898,
   httpsPort: 9899,
   // 是否开机自启（macOS 登录项）。默认关闭；可在菜单栏下拉菜单勾选，或在此文件手动改。
@@ -22,7 +36,7 @@ const DEFAULTS = {
   pasteDelayMs: 150,          // 上屏后到模拟回车
   attachPasteDelayMs: 1000,   // compose 多附件：每个附件上屏后到下一个之间的稳定等待（防剪贴板覆盖，目标 App 读取慢时可调大）
   // 键盘输入（compose）通路参数：手机端「键盘」模式下文字/附件上屏的行为。
-  // 走手机自带输入法，不占用 Vocifly 录音通道。
+  // 走手机自带输入法，不占用 Tme 录音通道。
   compose: {
     fileMaxCount: 5,        // 一次最多携带的附件数（手机端硬编码上限的服务端可调版）
     fileMaxMB: 20,          // 单个附件大小上限（MB）
@@ -161,16 +175,19 @@ function loadConfig() {
   }
 
   // 环境变量优先级最高，方便临时切换/调试
-  if (process.env.VOCIFLY_ASR_PROVIDER) config.asr.provider = process.env.VOCIFLY_ASR_PROVIDER
+  if (env('ASR_PROVIDER')) config.asr.provider = env('ASR_PROVIDER')
   if (process.env.DASHSCOPE_API_KEY) config.asr.bailian.apiKey = process.env.DASHSCOPE_API_KEY
   if (process.env.BAILIAN_API_KEY) config.asr.bailian.apiKey = process.env.BAILIAN_API_KEY
   if (process.env.BAILIAN_MODEL) config.asr.bailian.model = process.env.BAILIAN_MODEL
   if (process.env.BAILIAN_WORKSPACE_ID) config.asr.bailian.workspaceId = process.env.BAILIAN_WORKSPACE_ID
   if (process.env.BAILIAN_GATEWAY) config.asr.bailian.gateway = process.env.BAILIAN_GATEWAY
+  // TME_VOICE=1：临时打开浏览器麦克风 ASR + HTTPS（自测回退用，不写回 config.json）
+  if (env('VOICE') === '1') config.features.voiceInput = true
 
   // 默认输入模式与默认引擎对齐：config.json 之前无 defaultInputMode 字段时按 provider 推导初值；
   // 若已存在但为 cloud/local 且与 provider 失配（历史版本只改 provider 未同步 defaultInputMode），
   // 也在此拉齐。keyboard 是纯 UI 默认（保留现有引擎），不参与对齐。
+  // voiceInput 关闭时不改磁盘上的 defaultInputMode / asr.provider，仅在 getSettings 对外视为 keyboard。
   if (config.defaultInputMode === undefined) {
     config.defaultInputMode = config.asr.provider === 'bailian' ? 'cloud' : 'local'
   } else if (config.defaultInputMode === 'cloud' || config.defaultInputMode === 'local') {
@@ -179,6 +196,11 @@ function loadConfig() {
   }
 
   return config
+}
+
+// 浏览器语音入口是否开启（features.voiceInput，可被 TME_VOICE=1 强制打开）。
+function voiceInputEnabled() {
+  return !!(config.features && config.features.voiceInput)
 }
 
 const config = loadConfig()
@@ -190,6 +212,7 @@ const API_KEY_MASK = '••••••••••••••••'
 function getSettings() {
   const bailian = { ...config.asr.bailian }
   if (bailian.apiKey) bailian.apiKey = API_KEY_MASK
+  const voiceOn = voiceInputEnabled()
   return {
     sendRules: { ...config.sendRules },
     deleteRules: { ...config.deleteRules },
@@ -214,7 +237,10 @@ function getSettings() {
       defaultId: config.optimize.defaultId,
       pool: (config.optimize.pool || []).map((e) => ({ id: e.id, name: e.name, prompt: e.prompt })),
     },
-    defaultInputMode: config.defaultInputMode,
+    // voice 关闭时对外视为 keyboard，不改磁盘里的 defaultInputMode / asr.provider
+    defaultInputMode: voiceOn ? config.defaultInputMode : 'keyboard',
+    voiceInput: voiceOn,
+    features: { voiceInput: voiceOn },
     launchAtLogin: config.launchAtLogin,
     httpPort: config.httpPort,
     httpsPort: config.httpsPort,
@@ -447,4 +473,4 @@ function effectiveVad(provider) {
   return { ...config.vad, enabled: config.vad.enabled && p === 'bailian' }
 }
 
-module.exports = { config, getSettings, saveSettings, effectiveVad }
+module.exports = { config, getSettings, saveSettings, effectiveVad, env, voiceInputEnabled }
