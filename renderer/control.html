@@ -359,6 +359,9 @@
     @keyframes qrFlash { 0% { background: var(--accent-soft); } 100% { background: transparent; } }
     .qr-card.focus-flash { animation: qrFlash 1.2s ease-out; }
     .qr-card .qr-loading { width: 190px; height: 190px; margin: 0 auto; display: flex; align-items: center; justify-content: center; background: var(--bg-soft); border-radius: var(--r-md); color: var(--text-3); font-size: 12px; border: 1px dashed var(--border); }
+    /* voiceInput 关闭时隐藏 ASR/证书相关块；由 body.voice-off 控制 */
+    body.voice-off .voice-only { display: none !important; }
+    body.voice-off #qrGrid { grid-template-columns: 1fr; max-width: 280px; }
     .url-line { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding: 12px 14px; border-radius: var(--r-md); background: var(--bg-soft); border: 1px dashed var(--border); }
     .url-line .label { font-size: 12px; color: var(--text-3); flex: 0 0 auto; }
     .url-line code { flex: 1; font-size: 13px; font-family: var(--font-mono); color: var(--text); word-break: break-all; user-select: all; }
@@ -564,12 +567,12 @@
             <p>服务状态、今日费用与最近识别活动，一目了然。</p>
           </div>
 
-          <div class="warn-banner" id="budgetBanner">
+          <div class="warn-banner voice-only" id="budgetBanner">
             <svg class="warn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:18px;height:18px"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             <span><b>本月费用已达预算上限</b>，已自动切换为「本地识别（sherpa）」以停止计费。如需恢复云端识别，请在「设置 → 识别服务」中手动切换，或提高/关闭月度预算。</span>
           </div>
 
-          <div class="kpi-grid">
+          <div class="kpi-grid voice-only" id="overviewKpi">
             <div class="kpi-card">
               <span class="kpi-label">今日费用</span>
               <span class="kpi-num" id="sumToday">¥0.00000</span>
@@ -590,15 +593,15 @@
           <div class="panel">
             <h2>服务状态 <span class="updated-at" id="ovUpdated"></span></h2>
             <div class="status-card">
-              <div class="status-item"><span class="k">识别引擎（默认）</span><span class="v" id="ovProvider">—</span></div>
+              <div class="status-item voice-only"><span class="k">识别引擎（默认）</span><span class="v" id="ovProvider">—</span></div>
               <div class="status-item"><span class="k">连接地址</span><span class="v"><code id="ovUrl">—</code><button class="copy-btn" data-copy="ovUrl">复制</button></span></div>
-              <div class="status-item"><span class="k">证书</span><span class="v" id="ovCert">—</span></div>
-              <div class="status-item"><span class="k">Mac 钥匙串信任</span><span class="v" id="ovMacTrust">—</span></div>
+              <div class="status-item voice-only"><span class="k">证书</span><span class="v" id="ovCert">—</span></div>
+              <div class="status-item voice-only"><span class="k">Mac 钥匙串信任</span><span class="v" id="ovMacTrust">—</span></div>
               <div class="status-item"><span class="k">在线设备</span><span class="v" id="ovDevices">0 台</span></div>
             </div>
           </div>
 
-          <div class="panel">
+          <div class="panel voice-only">
             <div class="collapse-head" id="recentHead">
               <h2>最近识别记录</h2>
               <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
@@ -611,14 +614,14 @@
         <section class="page hidden" id="tab-devices">
           <div class="page-head">
             <h1>设备接入</h1>
-            <p>让手机与 Mac 连上同一局域网，按流程扫码即可把手机变成语音麦克风。</p>
+            <p id="devicesHeadDesc">让手机与 Mac 连上同一局域网，扫码打开即可用键盘文字上屏。</p>
           </div>
 
           <div class="panel">
             <h2>接入流程</h2>
-            <p class="desc">三步：先在 Mac 上信任本地证书，再让新手机扫「首次配置」，已配置过的手机直接扫「正常输入」。</p>
+            <p class="desc" id="devicesFlowDesc">同一 Wi-Fi 下扫码打开手机页，输入配对码后即可打字上屏。</p>
 
-            <div class="mac-trust-line big">
+            <div class="mac-trust-line big voice-only" id="macTrustLine">
               <div class="mac-trust-info">
                 <span class="v big-label">第一步 · Mac 本机钥匙串信任</span>
                 <span class="v" id="macTrustStatus">—</span>
@@ -637,8 +640,8 @@
                 <button class="mini-btn" id="pairRefresh">刷新</button>
               </div>
             </div>
-            <div class="qr-grid">
-              <div class="qr-card step-card" id="qrCardSetup">
+            <div class="qr-grid" id="qrGrid">
+              <div class="qr-card step-card voice-only" id="qrCardSetup">
                 <span class="step-num">2</span>
                 <h3>首次配置</h3>
                 <p>新手机先扫这里安装本地证书</p>
@@ -646,9 +649,9 @@
                 <img id="setupQrImg" class="hidden" alt="Tme 证书二维码"/>
               </div>
               <div class="qr-card step-card" id="qrCardApp">
-                <span class="step-num">3</span>
-                <h3>正常输入</h3>
-                <p>已配置过证书的手机扫这里</p>
+                <span class="step-num" id="appQrStepNum">1</span>
+                <h3 id="appQrTitle">扫码打开</h3>
+                <p id="appQrDesc">手机浏览器扫这里打开 Tme</p>
                 <div class="qr-loading" id="appQrLoading">正在生成…</div>
                 <img id="appQrImg" class="hidden" alt="Tme 使用二维码"/>
               </div>
@@ -661,7 +664,7 @@
             <p class="usage-note" id="qrNote">正在读取服务状态…</p>
           </div>
 
-          <div class="panel">
+          <div class="panel voice-only" id="certHelpPanel">
             <details class="fold">
               <summary>首次配置指引 <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></summary>
               <div class="fold-body">
@@ -699,9 +702,9 @@
             <details class="fold">
               <summary>常见问题 <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg></summary>
               <div class="fold-body">
-                <div class="help-step"><span class="help-num q">?</span><div><strong>手机收不到声音 / 无法上屏？</strong><p>确认手机和 Mac 在同一个 Wi-Fi，且 Mac 防火墙允许 Tme 接收连接。</p></div></div>
-                <div class="help-step"><span class="help-num q">?</span><div><strong>麦克风权限被拒绝？</strong><p>在手机浏览器设置中允许 Tme 网页使用麦克风。</p></div></div>
-                <div class="help-step"><span class="help-num q">?</span><div><strong>识别费用怎么算？</strong><p>云端模式按音频时长计费（元/秒），单价可在「用量与费用」中查看；本地模式完全免费。</p></div></div>
+                <div class="help-step"><span class="help-num q">?</span><div><strong>手机打不开页面 / 无法上屏？</strong><p>确认手机和 Mac 在同一个 Wi-Fi，且 Mac 防火墙允许 Tme 接收连接。</p></div></div>
+                <div class="help-step voice-only"><span class="help-num q">?</span><div><strong>麦克风权限被拒绝？</strong><p>在手机浏览器设置中允许 Tme 网页使用麦克风。</p></div></div>
+                <div class="help-step voice-only"><span class="help-num q">?</span><div><strong>识别费用怎么算？</strong><p>云端模式按音频时长计费（元/秒），单价可在「用量与费用」中查看；本地模式完全免费。</p></div></div>
               </div>
             </details>
           </div>
@@ -788,7 +791,7 @@
           <div class="pane" id="pane-asr">
             <div class="panel">
               <h2>输入模式</h2>
-              <p class="desc">云端精度高、按量计费；本地免费、隐私最好；键盘用手机自带输入法。此处为<b>默认输入模式</b>——新手机默认使用，已在线的手机可在对话页右上角单独切换，互不影响。切换后下一次识别生效。</p>
+              <p class="desc" id="asrModeDesc">键盘用手机自带输入法打字或语音输入，文字/附件上屏。此处为默认输入模式。</p>
               <div class="provider-list" id="providerList"></div>
               <div class="fields" id="providerFields"></div>
               <div class="btn-row">
@@ -797,7 +800,7 @@
               </div>
             </div>
 
-            <div class="panel" id="ctxCard">
+            <div class="panel voice-only" id="ctxCard">
               <h2>上下文增强</h2>
               <p class="desc">仅对云端识别（百炼）生效。开启后会把最近上屏文本作为上下文传给识别，用于提升人名、专有名词、同音词准确率；若识别质量下降，建议保持关闭。</p>
               <div class="toggle-row">
@@ -820,7 +823,7 @@
             </div>
 
             <!-- 静音门限（VAD）：仅云端生效的省流量/省钱开关，随「输入模式」一起保存 -->
-            <div class="panel" id="vadCard">
+            <div class="panel voice-only" id="vadCard">
               <h2>静音门限（VAD）</h2>
               <p class="desc">仅对<b>云端</b>识别生效：手机端只在检测到声音时上行音频，静音帧被丢弃，既省流量也省云端按音频时长计费的费用。</p>
               <div class="toggle-row">
@@ -843,7 +846,7 @@
             </div>
 
             <!-- 离线模型：本地识别（SenseVoice）依赖，不打包进应用，此处下载一次即可离线免费使用 -->
-            <div class="panel" id="modelCard">
+            <div class="panel voice-only" id="modelCard">
               <h2>离线模型</h2>
               <p class="desc">本地识别（SenseVoice）依赖离线模型（约 230MB），不打包进应用，需下载一次。下载后即可离线、免费、不出网使用。</p>
               <div class="btn-row">
@@ -946,14 +949,14 @@
               <div class="divider"></div>
 
               <h3>服务端口</h3>
-              <p class="desc">http 为证书安装页端口，https 为语音输入页与连接通道端口。修改保存后自动重启；<strong>手机需重新扫码并配对一次</strong>（旧地址已失效）。</p>
+              <p class="desc" id="portsDesc">修改保存后自动重启；<strong>手机需重新扫码并配对一次</strong>（旧地址已失效）。</p>
               <div class="fields">
                 <div class="field">
                   <label for="httpPort">HTTP 端口</label>
                   <input type="number" id="httpPort" min="1" max="65535" placeholder="9898"/>
-                  <span class="hint">首次配置 / 证书安装页。默认 9898。</span>
+                  <span class="hint" id="httpPortHint">手机页与连接通道。默认 9898。</span>
                 </div>
-                <div class="field">
+                <div class="field voice-only" id="httpsPortField">
                   <label for="httpsPort">HTTPS 端口</label>
                   <input type="number" id="httpsPort" min="1" max="65535" placeholder="9899"/>
                   <span class="hint">语音输入页与 WebSocket。默认 9899。</span>
@@ -969,7 +972,7 @@
               <h3>网络与安全</h3>
               <p class="desc" style="margin-top:4px">本控制面板仅允许 Mac 本机访问；手机需与 Mac 连接同一 Wi-Fi。</p>
               <div class="status-card">
-                <div class="status-item"><span class="k">证书</span><span class="v" id="netCert">—</span></div>
+                <div class="status-item voice-only"><span class="k">证书</span><span class="v" id="netCert">—</span></div>
                 <div class="status-item"><span class="k">访问控制</span><span class="v"><span class="mini-tag">仅本机 loopback</span></span></div>
               </div>
               <p class="usage-note" id="netNote">正在读取服务状态…</p>
@@ -995,6 +998,8 @@
     // ================= 工具 =================
     const $ = (id) => document.getElementById(id)
     let toastTimer = null
+    // 与服务端 features.voiceInput 对齐；默认关（与产品默认一致），loadConfig 后再校准
+    let voiceInputEnabled = false
     function toast(msg) {
       const el = $('toast'); el.textContent = msg; el.classList.add('show')
       clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 1800)
@@ -1002,6 +1007,37 @@
     function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;') }
     function fmtMoney(n) { return '¥' + (Number(n) || 0).toFixed(5) }
     function fmtTime(at) { const d = new Date(at); const p=(x)=>String(x).padStart(2,'0'); return p(d.getHours())+':'+p(d.getMinutes()) }
+
+    // voice 关闭：藏证书/ASR 相关块，文案改为 HTTP 文字上屏；打开时恢复语音接入文案
+    function applyVoiceMode(on, opts = {}) {
+      voiceInputEnabled = !!on
+      document.body.classList.toggle('voice-off', !voiceInputEnabled)
+      const head = $('devicesHeadDesc')
+      const flow = $('devicesFlowDesc')
+      if (voiceInputEnabled) {
+        if (head) head.textContent = '让手机与 Mac 连上同一局域网，按流程扫码即可把手机变成语音麦克风。'
+        if (flow) flow.textContent = '三步：先在 Mac 上信任本地证书，再让新手机扫「首次配置」，已配置过的手机直接扫「正常输入」。'
+        if ($('appQrStepNum')) $('appQrStepNum').textContent = '3'
+        if ($('appQrTitle')) $('appQrTitle').textContent = '正常输入'
+        if ($('appQrDesc')) $('appQrDesc').textContent = '已配置过证书的手机扫这里'
+        if ($('httpPortHint')) $('httpPortHint').textContent = '首次配置 / 证书安装页。默认 9898。'
+        if ($('portsDesc')) $('portsDesc').innerHTML = 'http 为证书安装页端口，https 为语音输入页与连接通道端口。修改保存后自动重启；<strong>手机需重新扫码并配对一次</strong>（旧地址已失效）。'
+        if ($('asrModeDesc')) $('asrModeDesc').innerHTML = '云端精度高、按量计费；本地免费、隐私最好；键盘用手机自带输入法。此处为<b>默认输入模式</b>——新手机默认使用，已在线的手机可在对话页右上角单独切换，互不影响。切换后下一次识别生效。'
+      } else {
+        if (head) head.textContent = '让手机与 Mac 连上同一局域网，扫码打开即可用键盘文字上屏。'
+        if (flow) flow.textContent = '同一 Wi-Fi 下扫码打开手机页，输入配对码后即可打字上屏。'
+        if ($('appQrStepNum')) $('appQrStepNum').textContent = '1'
+        if ($('appQrTitle')) $('appQrTitle').textContent = '扫码打开'
+        if ($('appQrDesc')) $('appQrDesc').textContent = '手机浏览器扫这里打开 Tme'
+        if ($('httpPortHint')) $('httpPortHint').textContent = '手机页与连接通道。默认 9898。'
+        if ($('portsDesc')) $('portsDesc').innerHTML = '修改保存后自动重启；<strong>手机需重新扫码并配对一次</strong>（旧地址已失效）。'
+        if ($('asrModeDesc')) $('asrModeDesc').textContent = '键盘用手机自带输入法打字或语音输入，文字/附件上屏。此处为默认输入模式。'
+      }
+      // 首次脚本执行时 PROVIDER_SCHEMA 尚未初始化，跳过；loadConfig / 底部 init 再渲染
+      if (opts.renderProviders !== false && typeof PROVIDER_SCHEMA !== 'undefined') renderProviderCards()
+    }
+    // 产品默认 voice 关：首屏即藏证书块，避免闪一下
+    applyVoiceMode(false, { renderProviders: false })
 
     // ================= 选项卡 =================
     function showTab(name) {
@@ -1116,7 +1152,10 @@
     const providerFields = $('providerFields')
 
     function renderProviderCards() {
-      providerList.innerHTML = PROVIDER_SCHEMA.map((p) => {
+      const schema = voiceInputEnabled
+        ? PROVIDER_SCHEMA
+        : PROVIDER_SCHEMA.filter((p) => p.id === 'keyboard')
+      providerList.innerHTML = schema.map((p) => {
         const tag = p.tag ? `<span class="tag ${p.tag}">${p.tagText}</span>` : ''
         return `<label class="option" data-provider="${p.id}">
           <input type="radio" name="provider" value="${p.id}"/>
@@ -1124,11 +1163,16 @@
         </label>`
       }).join('')
       providerList.querySelectorAll('input[name="provider"]').forEach((r) => r.addEventListener('change', toggleFields))
+      // voice 关闭时默认选中键盘
+      if (!voiceInputEnabled) {
+        const kb = providerList.querySelector('input[name="provider"][value="keyboard"]')
+        if (kb) kb.checked = true
+      }
     }
 
     function selectedProvider() {
       const checked = providerList.querySelector('input[name="provider"]:checked')
-      return checked ? checked.value : 'sherpa'
+      return checked ? checked.value : (voiceInputEnabled ? 'sherpa' : 'keyboard')
     }
 
     // 双头滑块的当前值（loKey/hiKey → 数值），供保存时读取
@@ -1275,6 +1319,7 @@
         if (!res.ok) throw new Error('HTTP ' + res.status)
         const s = await res.json()
         window.__lastSettings = s
+        applyVoiceMode(!!s.voiceInput)
         // 三态选中：优先 defaultInputMode（cloud/local/keyboard），兼容旧 config 用 provider 推导
         const defMode = s.defaultInputMode || (s.asr.provider === 'bailian' ? 'cloud' : 'local')
         const cardVal = { cloud: 'bailian', local: 'sherpa', keyboard: 'keyboard' }[defMode] || 'sherpa'
@@ -1448,10 +1493,14 @@
       btn.disabled = true; st.className = 'status'; st.textContent = '保存中…'
       try {
         const httpPort = Number($('httpPort').value)
-        const httpsPort = Number($('httpsPort').value)
         if (!Number.isInteger(httpPort) || httpPort < 1 || httpPort > 65535) throw new Error('HTTP 端口需为 1~65535 整数')
-        if (!Number.isInteger(httpsPort) || httpsPort < 1 || httpsPort > 65535) throw new Error('HTTPS 端口需为 1~65535 整数')
-        const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ httpPort, httpsPort }) })
+        const body = { httpPort }
+        if (voiceInputEnabled) {
+          const httpsPort = Number($('httpsPort').value)
+          if (!Number.isInteger(httpsPort) || httpsPort < 1 || httpsPort > 65535) throw new Error('HTTPS 端口需为 1~65535 整数')
+          body.httpsPort = httpsPort
+        }
+        const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
         const result = await res.json()
         if (!res.ok || !result.ok) throw new Error(result.error || 'HTTP ' + res.status)
         st.className = 'status success'
@@ -1621,9 +1670,13 @@
         const res = await fetch('/api/mac', { cache: 'no-store' })
         const d = await res.json()
         $('ovUrl').textContent = d.phoneUrl || '—'
-        $('ovCert').innerHTML = d.isSecure ? '<span class="mini-tag">已启用 HTTPS</span>' : '<span class="mini-tag warn">HTTP 开发模式</span>'
-        $('netCert').innerHTML = d.isSecure ? '<span class="mini-tag">已启用 HTTPS</span>' : '<span class="mini-tag warn">HTTP 开发模式</span>'
-        $('netNote').textContent = d.isSecure ? '已启用 HTTPS，手机可直接扫码使用。' : (d.certReason ? '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。原因：' + d.certReason : '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。')
+        if ($('ovCert')) $('ovCert').innerHTML = d.isSecure ? '<span class="mini-tag">已启用 HTTPS</span>' : '<span class="mini-tag warn">HTTP 开发模式</span>'
+        if ($('netCert')) $('netCert').innerHTML = d.isSecure ? '<span class="mini-tag">已启用 HTTPS</span>' : '<span class="mini-tag warn">HTTP 开发模式</span>'
+        if (voiceInputEnabled) {
+          $('netNote').textContent = d.isSecure ? '已启用 HTTPS，手机可直接扫码使用。' : (d.certReason ? '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。原因：' + d.certReason : '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。')
+        } else {
+          $('netNote').textContent = '当前为局域网 HTTP 文字上屏模式，手机扫码即可打开（无需安装证书）。'
+        }
         updatePair(d)
       } catch (e) { /* 忽略 */ }
       await loadMacTrust()
@@ -1686,10 +1739,16 @@
         const res = await fetch('/api/mac', { cache: 'no-store' })
         const d = await res.json()
         revealQr('appQrImg', 'appQrLoading', d.appQr)
-        if (d.setupQr) revealQr('setupQrImg', 'setupQrLoading', d.setupQr)
-        else { $('setupQrLoading').textContent = '未启用 HTTPS'; $('setupQrLoading').classList.remove('hidden') }
+        if (voiceInputEnabled) {
+          if (d.setupQr) revealQr('setupQrImg', 'setupQrLoading', d.setupQr)
+          else if ($('setupQrLoading')) { $('setupQrLoading').textContent = '未启用 HTTPS'; $('setupQrLoading').classList.remove('hidden') }
+        }
         $('phoneUrl').textContent = d.phoneUrl || '—'
-        $('qrNote').textContent = d.isSecure ? '已启用 HTTPS，手机可直接扫码使用。' : (d.certReason ? '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。原因：' + d.certReason : '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。')
+        if (voiceInputEnabled) {
+          $('qrNote').textContent = d.isSecure ? '已启用 HTTPS，手机可直接扫码使用。' : (d.certReason ? '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。原因：' + d.certReason : '当前为 HTTP 开发模式，手机浏览器无法调用麦克风。')
+        } else {
+          $('qrNote').textContent = '局域网 HTTP 文字上屏：扫码打开后输入配对码即可打字上屏，无需安装证书。'
+        }
         updatePair(d)
       } catch (e) {
         if (retries > 0) { await new Promise(r => setTimeout(r, 400)); return loadQr(retries - 1) }

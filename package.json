@@ -4,6 +4,7 @@
   "description": "Tme - 手机当麦克风，Mac 语音输入",
   "main": "src/interface/main.js",
   "scripts": {
+    "prestart": "node scripts/ensure-electron.js",
     "start": "electron .",
     "dev": "node src/interface/server.js",
     "setup:https": "node scripts/setup-local-https.js",

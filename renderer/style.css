@@ -1287,3 +1287,14 @@ body {
   min-height: 18px;
 }
 .pair-error.hidden { display: none; }
+
+/* voiceInput 关闭：保留 #talk 作「唤起文本输入」入口；藏 ASR 模式切换与回显（录音代码路径仍保留） */
+body.voice-off .dialog-tools,
+body.voice-off #inputModeSwitch,
+body.voice-off #recHint,
+body.voice-off #netHint,
+body.voice-off #partial,
+body.voice-off #finals,
+body.voice-off #asrErrorModal {
+  display: none !important;
+}

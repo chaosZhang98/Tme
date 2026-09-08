@@ -98,7 +98,8 @@ if CommandLine.arguments.contains("--all") {
     exit(0)
 }
 
-// ---------- 默认：列出正在运行的应用 ----------
+// ---------- 默认：列出正在运行的应用（前台 App 排最前，其余按名称） ----------
+let frontmostId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
 let apps = NSWorkspace.shared.runningApplications
 var seen = Set<String>()
 var items: [AppItem] = []
@@ -114,6 +115,12 @@ for app in apps where app.activationPolicy == .regular {
         icon = ""
     }
     items.append(AppItem(name: name, bundleId: bundleId, icon: icon))
+}
+
+items.sort { a, b in
+    if a.bundleId == frontmostId { return true }
+    if b.bundleId == frontmostId { return false }
+    return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
 }
 
 let encoder = JSONEncoder()

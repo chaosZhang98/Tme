@@ -90,6 +90,8 @@ let serverProvider = ''  // 最近一次 settings 下发的本连接 provider（
 let availability = { cloud: true, offline: true } // settings 下发的引擎可用性；点「说话」前据此拦截不可用模式
 let optimizePool = []        // [{id, name}] 来自 settings 消息的 optimize.pool（优化模板选择器数据源）
 let optimizeDefaultId = ''   // settings 消息的 optimize.defaultId
+// 与服务端 features.voiceInput 对齐：默认 false（产品默认屏蔽浏览器 ASR）；settings 可改回 true（TME_VOICE=1）
+let voiceInputEnabled = false
 // 键盘（compose）上限：默认 5 个 / 单附件 20MB，收到服务端 settings 后用 config.compose 覆盖
 let MAX_COMPOSE_FILES = 5
 let MAX_COMPOSE_BYTES = 20 * 1024 * 1024
@@ -611,6 +613,11 @@ function connect() {
         const mb = Number(msg.compose.fileMaxMB)
         if (Number.isFinite(mb) && mb > 0) MAX_COMPOSE_BYTES = mb * 1024 * 1024
       }
+      // 功能开关：与服务端 features.voiceInput 对齐（默认关；TME_VOICE=1 时开）
+      if (msg.voiceInput !== undefined) {
+        voiceInputEnabled = !!msg.voiceInput
+        applyVoiceUi()
+      }
       // 云端/本地对账以「本连接生效 provider」为准 —— server 下发的 provider 已含本连接的
       // 每连接覆盖（用户点本地后，server 回推 provider=sherpa）；defaultInputMode 是全局默认，
       // 只用于「无本地偏好的新手机」初次进入的模式，绝不能在切换后拿去反向对账（会把刚选的模式弹回默认）。
@@ -618,6 +625,15 @@ function connect() {
       const impliedDefault = (msg.defaultInputMode === 'cloud' || msg.defaultInputMode === 'local' || msg.defaultInputMode === 'keyboard')
         ? msg.defaultInputMode
         : impliedByProvider
+      if (!voiceInputEnabled) {
+        // voice 关闭：始终键盘，跳过 cloud/local 对账
+        if (!settingsSeen) {
+          settingsSeen = true
+          setInputMode('keyboard', { silent: true })
+          if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'inputMode', mode: 'keyboard' }))
+        }
+        return
+      }
       if (!settingsSeen) {
         settingsSeen = true
         // 连接后首个 settings：把本机持久化的云端/本地偏好断言给 server（每连接覆盖，下次识别生效）；
@@ -747,6 +763,8 @@ function connect() {
     } else if (msg.type === 'frontApp') {
       currentFrontApp = msg.app || null
       updateQuitModal()
+      // 切换面板已打开时，用前台 App 高亮对应项（apps / frontApp 谁先到都行）
+      if (trayOpen && trayMode === 'switch') markFrontAppSelected()
     } else if (msg.type === 'gestureDone') {
       flashStatus(msg.action === 'launchpad' ? '已打开启动台' : msg.action === 'expose' ? '已打开窗口总览' : '已打开任务控制')
     } else if (msg.type === 'appQuit') {
@@ -768,14 +786,18 @@ function connect() {
 let enteredViaToken = !!(location.hash && location.hash.indexOf('#token=') === 0)
 // 先处理 #token（存入 localStorage 并清地址栏），再建立 WebSocket
 ingestPairToken()
+// 产品默认 voice 关闭：先按键盘-only 藏 ASR UI；首个 settings 再对齐服务端（含 TME_VOICE=1）
+applyVoiceUi()
 // 恢复本机持久化的输入模式（键盘模式会立即展开输入区并置灰说话按钮；
 // 云端/本地在此只刷新切换器选中态，与 server 引擎的对账等首个 settings 再做）
-if (inputMode) setInputMode(inputMode, { silent: true })
+if (voiceInputEnabled && inputMode) setInputMode(inputMode, { silent: true })
+else if (!voiceInputEnabled) setInputMode('keyboard', { silent: true })
 else updateModeSwitchUI()
 connect()
 
-// 页面加载即预热音频管线，让“按下即录”生效、避免前几秒语音丢失
-window.addEventListener('load', warmupAudio)
+// 页面加载即预热音频管线，让“按下即录”生效、避免前几秒语音丢失。
+// voice 关闭时跳过（不创建 AudioContext / 不碰麦克风权限）。
+window.addEventListener('load', () => { if (voiceInputEnabled) warmupAudio() })
 
 // PWA：注册 Service Worker（仅 HTTPS 生效，HTTP 开发模式跳过，避免缓存旧版干扰调试）。
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
@@ -889,6 +911,8 @@ function updateModeSwitchUI() {
 
 function setInputMode(mode, opts = {}) {
   if (mode !== 'cloud' && mode !== 'local' && mode !== 'keyboard') return
+  // voice 关闭时强制键盘，忽略 cloud/local（含 localStorage 里的旧偏好）
+  if (!voiceInputEnabled && mode !== 'keyboard') mode = 'keyboard'
   // 用户主动切换输入模式时若正在录音，直接中断本次识别（丢弃，避免「模式已切、却仍在录音」的错乱）；
   // silent 对账（服务器 settings 推来）不中断，沿用「进行中会话不切引擎」的语义。
   if (!opts.silent && holding) cancelRecording()
@@ -910,6 +934,22 @@ function setInputMode(mode, opts = {}) {
     }
   }
   phoneLog('ui', '输入模式：' + ({ cloud: '云端', local: '本地', keyboard: '键盘' }[mode] || mode))
+}
+
+// voice 关闭：藏 ASR 入口与回显，强制键盘 + 对话页 compose；录音代码路径保留但进不去。
+function applyVoiceUi() {
+  const off = !voiceInputEnabled
+  document.body.classList.toggle('voice-off', off)
+  // partial / recHint / asrErrorModal 本身已有 .hidden 样式；voice-off 时一并收起
+  if (off) {
+    if (partialEl) partialEl.classList.add('hidden')
+    if (recHint) recHint.classList.add('hidden')
+    if (asrErrorModal) asrErrorModal.classList.add('hidden')
+    setInputMode('keyboard', { silent: true })
+    setPage('dialog')
+    enterCompose()
+  }
+  // voice 打开时不强制清 partial/finals：它们按识别状态自行管理
 }
 
 function enterCompose() {
@@ -1114,6 +1154,8 @@ function openTray(mode) {
   appTrayOverlay.setAttribute('aria-label', mode === 'launch' ? '启动台' : '切换应用')
   appTray.innerHTML = ''
   ws.send(JSON.stringify({ type: mode === 'launch' ? 'launchpad' : 'apps' }))
+  // 切换面板：同时查前台 App，便于 renderApps / frontApp 回调后高亮当前项
+  if (mode === 'switch') ws.send(JSON.stringify({ type: 'getFrontApp' }))
   phoneLog('ui', mode === 'launch' ? '启动台: 打开' : '切换面板: 打开')
   flashStatus('加载应用…')
   return true
@@ -1347,6 +1389,16 @@ appTrayOverlay.addEventListener('click', (e) => {
   if (e.target === appTrayOverlay || !appTray.contains(e.target)) closeTray()
 })
 
+function markFrontAppSelected() {
+  const id = currentFrontApp && currentFrontApp.bundleId
+  if (!id || !appTray) return
+  const nodes = appTray.querySelectorAll('.app-item')
+  nodes.forEach((el, i) => {
+    const app = appListCache[i]
+    el.classList.toggle('selected', !!(app && app.bundleId === id))
+  })
+}
+
 function renderApps(apps) {
   appTray.innerHTML = ''
   const isLaunch = trayMode === 'launch'
@@ -1354,10 +1406,11 @@ function renderApps(apps) {
     flashStatus(isLaunch ? '没有可启动的应用' : '没有可切换的应用')
     return
   }
+  const frontId = !isLaunch && currentFrontApp && currentFrontApp.bundleId
   for (const app of apps) {
     const item = document.createElement('button')
     item.type = 'button'
-    item.className = 'app-item'
+    item.className = 'app-item' + (frontId && app.bundleId === frontId ? ' selected' : '')
     const img = document.createElement('img')
     img.src = app.icon || ''
     img.alt = app.name
@@ -1585,10 +1638,10 @@ function cancelRecording() {
 function onTalkToggle() {
   if (talkBtn.disabled) return
   if (inputMode === 'keyboard') {
-    // 键盘模式：点「说话」不录音，而是直接唤起手机键盘。
+    // 键盘模式：点「说话」不录音，而是切到对话页并唤起手机键盘。
     // 关键：必须在点击手势的同步调用栈内 focus()，iOS 才会弹出键盘；
     // setTimeout 延后会脱离手势上下文，导致切到键盘页后还得手动再点一下输入框。
-    if (mouseMode) setPage('dialog')
+    setPage('dialog')
     enterCompose() // 输入区未展开则展开（已展开是 no-op，其内部延时聚焦无副作用）
     try { composerInput.focus() } catch (_) {}
     return

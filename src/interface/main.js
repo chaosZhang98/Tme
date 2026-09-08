@@ -206,29 +206,38 @@ function switchProvider(provider) {
 
 // 菜单栏下拉菜单（参考系统菜单栏应用样式，但内容为 Tme 自身功能）
 function buildTrayMenu() {
-  return Menu.buildFromTemplate([
+  const voiceOn = !!(config.features && config.features.voiceInput)
+  const phoneQrItem = voiceOn
+    ? {
+        label: '手机二维码',
+        submenu: [
+          { label: '正常输入', click: () => openControl('devices/app') },
+          { label: '首次配置证书', click: () => openControl('devices/setup') },
+        ],
+      }
+    : { label: '手机二维码', click: () => openControl('devices/app') }
+  const items = [
     { label: '打开控制面板', click: () => openControl('settings') },
     { label: '使用帮助', click: () => openControl('devices') },
     { type: 'separator' },
-    {
-      label: '手机二维码',
-      submenu: [
-        { label: '正常输入', click: () => openControl('devices/app') },
-        { label: '首次配置证书', click: () => openControl('devices/setup') },
-      ],
-    },
-    {
+    phoneQrItem,
+  ]
+  if (voiceOn) {
+    items.push({
       label: '识别服务',
       submenu: [
         { label: '本地（SenseVoice）', click: () => switchProvider('sherpa') },
         { label: '云端（阿里云百炼）', click: () => switchProvider('bailian') },
       ],
-    },
+    })
+  }
+  items.push(
     { type: 'separator' },
     { label: '开机自启', type: 'checkbox', checked: !!config.launchAtLogin, click: (item) => setLaunchAtLogin(item.checked) },
     { type: 'separator' },
     { label: '退出 Tme', click: () => { isQuitting = true; app.quit() } },
-  ])
+  )
+  return Menu.buildFromTemplate(items)
 }
 
 function setupTray() {

@@ -21,6 +21,11 @@ function env(suffix) {
 const DEFAULTS = {
   sendRules: {},
   deleteRules: {},
+  // 功能开关：voiceInput=false 时屏蔽浏览器麦克风 ASR（只走键盘文字上屏），并默认只启 HTTP、不发证书。
+  // ASR 实现仍保留；TME_VOICE=1 可临时打开（不进控制面板）。
+  features: {
+    voiceInput: false,
+  },
   // 服务端口。默认 http 设置页 9898 / https 语音页+WS 9899；可在控制面板「配置 → 常规」改，改后自动重启生效。
   // 也可用 TME_HTTP_PORT / TME_HTTPS_PORT 环境变量临时覆盖（优先级最高；仍认 VOCIFLY_*）。
   httpPort: 9898,
@@ -176,10 +181,13 @@ function loadConfig() {
   if (process.env.BAILIAN_MODEL) config.asr.bailian.model = process.env.BAILIAN_MODEL
   if (process.env.BAILIAN_WORKSPACE_ID) config.asr.bailian.workspaceId = process.env.BAILIAN_WORKSPACE_ID
   if (process.env.BAILIAN_GATEWAY) config.asr.bailian.gateway = process.env.BAILIAN_GATEWAY
+  // TME_VOICE=1：临时打开浏览器麦克风 ASR + HTTPS（自测回退用，不写回 config.json）
+  if (env('VOICE') === '1') config.features.voiceInput = true
 
   // 默认输入模式与默认引擎对齐：config.json 之前无 defaultInputMode 字段时按 provider 推导初值；
   // 若已存在但为 cloud/local 且与 provider 失配（历史版本只改 provider 未同步 defaultInputMode），
   // 也在此拉齐。keyboard 是纯 UI 默认（保留现有引擎），不参与对齐。
+  // voiceInput 关闭时不改磁盘上的 defaultInputMode / asr.provider，仅在 getSettings 对外视为 keyboard。
   if (config.defaultInputMode === undefined) {
     config.defaultInputMode = config.asr.provider === 'bailian' ? 'cloud' : 'local'
   } else if (config.defaultInputMode === 'cloud' || config.defaultInputMode === 'local') {
@@ -188,6 +196,11 @@ function loadConfig() {
   }
 
   return config
+}
+
+// 浏览器语音入口是否开启（features.voiceInput，可被 TME_VOICE=1 强制打开）。
+function voiceInputEnabled() {
+  return !!(config.features && config.features.voiceInput)
 }
 
 const config = loadConfig()
@@ -199,6 +212,7 @@ const API_KEY_MASK = '••••••••••••••••'
 function getSettings() {
   const bailian = { ...config.asr.bailian }
   if (bailian.apiKey) bailian.apiKey = API_KEY_MASK
+  const voiceOn = voiceInputEnabled()
   return {
     sendRules: { ...config.sendRules },
     deleteRules: { ...config.deleteRules },
@@ -223,7 +237,10 @@ function getSettings() {
       defaultId: config.optimize.defaultId,
       pool: (config.optimize.pool || []).map((e) => ({ id: e.id, name: e.name, prompt: e.prompt })),
     },
-    defaultInputMode: config.defaultInputMode,
+    // voice 关闭时对外视为 keyboard，不改磁盘里的 defaultInputMode / asr.provider
+    defaultInputMode: voiceOn ? config.defaultInputMode : 'keyboard',
+    voiceInput: voiceOn,
+    features: { voiceInput: voiceOn },
     launchAtLogin: config.launchAtLogin,
     httpPort: config.httpPort,
     httpsPort: config.httpsPort,
@@ -456,4 +473,4 @@ function effectiveVad(provider) {
   return { ...config.vad, enabled: config.vad.enabled && p === 'bailian' }
 }
 
-module.exports = { config, getSettings, saveSettings, effectiveVad, env }
+module.exports = { config, getSettings, saveSettings, effectiveVad, env, voiceInputEnabled }

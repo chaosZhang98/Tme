@@ -9,7 +9,7 @@ const path = require('path')
 const QRCode = require('qrcode')
 const { WebSocket, WebSocketServer } = require('ws')
 const asr = require('../infrastructure/asr') // AsrPort：离线 sherpa / 在线 bailian 分发
-const { config, getSettings, saveSettings, effectiveVad, env } = require('../infrastructure/config')
+const { config, getSettings, saveSettings, effectiveVad, env, voiceInputEnabled } = require('../infrastructure/config')
 const appList = require('../infrastructure/platform/app-switcher') // 前台应用枚举
 const paster = require('../infrastructure/paste/mac-paster') // PastePort：mac 上屏
 const optimize = require('../infrastructure/optimize/bailian-optimize') // OptimizePort：百炼 qwen 文字优化
@@ -325,13 +325,16 @@ function settingsPayloadFor(client, settings) {
   // defaultInputMode：新手机（无本地偏好）默认进入的输入模式；compose：键盘通路参数（附件上限等）。
   // optimize：优化模板只下发 {id,name}（手机端选择器用），提示词正文不出 Mac，按 promptId 回传。
   // availability：手机端据此在「说话」前拦截不可用模式并弹框说明原因，避免先开麦再报错。
+  // voiceInput：关闭时强制 defaultInputMode=keyboard（不改磁盘），手机端按此藏 ASR UI。
+  const voiceOn = voiceInputEnabled()
   const optPool = (config.optimize && Array.isArray(config.optimize.pool)) ? config.optimize.pool : []
   return JSON.stringify({
     type: 'settings',
     trackpad,
     vad: effectiveVad(provider),
     provider,
-    defaultInputMode: config.defaultInputMode,
+    defaultInputMode: voiceOn ? config.defaultInputMode : 'keyboard',
+    voiceInput: voiceOn,
     compose: config.compose,
     availability: { cloud: cloudAvailable(), offline: modelDownload.isModelAvailable() },
     optimize: {
@@ -1550,6 +1553,8 @@ function attachWebSocket(server, onStatus, deps) {
       if (dev) dev.lastActiveAt = Date.now()
       if (isBinary) {
         // 二进制帧 = PCM 音频块（Int16, 16kHz, mono）
+        // voice 关闭时忽略（防御：旧页面仍可能推音频）
+        if (!voiceInputEnabled()) return
         sessionSvc.pushAudio(data)
         return
       }
@@ -1583,10 +1588,14 @@ function attachWebSocket(server, onStatus, deps) {
       }
 
       if (msg.type === 'start') {
+        // voice 关闭时忽略 start/stop/cancel（防御：旧页面点说话也不启 ASR）
+        if (!voiceInputEnabled()) return
         sessionSvc.start()
       } else if (msg.type === 'stop') {
+        if (!voiceInputEnabled()) return
         sessionSvc.stop()
       } else if (msg.type === 'cancel') {
+        if (!voiceInputEnabled()) return
         sessionSvc.cancel()
       } else if (msg.type === 'compose') {
         // 手机端 compose：文本 + 附件（图片/文件原子上屏），粘贴后自动回车
@@ -1594,6 +1603,8 @@ function attachWebSocket(server, onStatus, deps) {
       } else if (msg.type === 'inputMode') {
         // 手机端三种输入模式：云端(cloud→bailian)/本地(local→sherpa) 仅本连接生效，不改全局 config；
         // 键盘(keyboard) 不改 provider 覆盖，仅记录为展示模式（控制面板设备列表显示「键盘」）。
+        // voice 关闭时只接受 keyboard，忽略 cloud/local 覆盖。
+        if (!voiceInputEnabled() && msg.mode !== 'keyboard') return
         sessionSvc.setInputMode(msg.mode)
         if (ws.readyState === WebSocket.OPEN) ws.send(settingsPayloadFor(ws))
       } else if (msg.type === 'send') {
@@ -1612,7 +1623,8 @@ function attachWebSocket(server, onStatus, deps) {
         paster.switchWindow(dir)
         ws.send(JSON.stringify({ type: 'windowSwitched', dir }))
       } else if (msg.type === 'apps') {
-        const apps = appList.listApps().map((app) => ({
+        // 打开切换面板时强制刷新，避免 TTL/失败回退导致缺漏运行中 App 或仍显示已退出的 App
+        const apps = appList.listApps(true).map((app) => ({
           ...app,
           icon: app.icon ? 'data:image/png;base64,' + app.icon : '',
         }))
@@ -1716,8 +1728,16 @@ async function createServer({ onStatus, onQuit, deps, onServicesChanged, onLaunc
   log('server', `ASR provider: ${config.asr.provider}`)
   const lanIp = getLanIp() || '127.0.0.1'
   const localHostname = getLocalHostname()
-  const forceHttp = env('FORCE_HTTP') === '1'
-  const cert = forceHttp ? { ok: false, reason: '已通过 TME_FORCE_HTTP=1 强制使用 HTTP' } : ensureLocalCertificate()
+  // voiceInput 关闭或 TME_FORCE_HTTP=1：跳过证书，只启 HTTP（局域网也直接 serveApp，不吐证书安装页）
+  const forceHttp = env('FORCE_HTTP') === '1' || !voiceInputEnabled()
+  const cert = forceHttp
+    ? {
+        ok: false,
+        reason: env('FORCE_HTTP') === '1'
+          ? '已通过 TME_FORCE_HTTP=1 强制使用 HTTP'
+          : '语音输入已关闭（features.voiceInput=false），仅启用 HTTP 文字上屏',
+      }
+    : ensureLocalCertificate()
 
   if (cert.ok) {
     const appUrl = `https://${localHostname}:${HTTPS_PORT}`
